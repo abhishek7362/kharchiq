@@ -1,4 +1,7 @@
 import { useEffect, useState } from "react";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import { auth } from "./firebase";
+import Auth from "./Components/Auth";
 import AddExpense from "./Components/AddExpense";
 import Budget from "./Components/Budget";
 import ScanQR from "./Components/ScanQR";
@@ -216,6 +219,36 @@ function CategoryChart({ data }) {
 }
 
 function App() {
+  const [user, setUser] = useState(null);
+  const [userName, setUserName] = useState("");
+  const [authLoading, setAuthLoading] = useState(true);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setUserName(
+        currentUser?.displayName || currentUser?.email?.split("@")[0] || "",
+      );
+      setAuthLoading(false);
+    });
+
+    return unsubscribe;
+  }, []);
+
+  const handleLogout = async () => {
+    await signOut(auth);
+    setExpenses([]);
+    setBudgets({
+      monthly: 0,
+      Food: 0,
+      Shopping: 0,
+      Transport: 0,
+      Health: 0,
+      Education: 0,
+      Other: 0,
+    });
+    setCurrentPage("home");
+  };
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
 
@@ -360,6 +393,8 @@ function App() {
 
     return Math.min(Math.round((spent / budget) * 100), 100);
   };
+  if (authLoading) return null;
+  if (!user) return <Auth onNameSaved={setUserName} />;
   const categoryChartData = Object.keys(categoryBudgets)
     .map((category) => ({
       category,
@@ -429,11 +464,13 @@ function App() {
         </nav>
 
         <div className="sidebar-bottom">
-          <div className="profile-circle">A</div>
+          <div className="profile-circle">
+            {userName.charAt(0).toUpperCase()}
+          </div>
 
           <div>
-            <strong>Abhishek</strong>
-            <small>Personal Account</small>
+            <strong>{userName}</strong>
+            <small>{user.email}</small>
           </div>
         </div>
       </aside>
@@ -445,7 +482,7 @@ function App() {
             {/* HEADER */}
             <header className="header">
               <div>
-                <h1>Good Morning, Abhishek 👋</h1>
+                <h1>Good Morning, {userName} 👋</h1>
                 <p>Here's your spending summary for this month.</p>
               </div>
 
@@ -455,6 +492,9 @@ function App() {
                   onClick={() => setShowAddExpense(true)}
                 >
                   + Add Expense
+                </button>
+                <button className="logout-btn" onClick={handleLogout}>
+                  Logout
                 </button>
 
                 <div className="date">September 2026</div>
