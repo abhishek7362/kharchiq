@@ -223,20 +223,22 @@ function ScanQR({ onClose, onExpenseAdded }) {
                   return;
                 }
 
-                const upiUrl = new URL(paymentData.qrData);
-
-                upiUrl.searchParams.set("am", Number(amount).toFixed(2));
-                upiUrl.searchParams.set("cu", "INR");
-
                 const confirmed = window.confirm(
                   `Pay ₹${Number(amount).toFixed(2)} to ${paymentData.merchantName}?`,
                 );
+                if (!confirmed) return;
 
-                if (!confirmed) {
-                  return;
+                // Original QR string ko bilkul waisa hi rakho.
+                // Sirf tab amount jodo jab QR me pehle se na ho.
+                let payUrl = paymentData.qrData;
+                if (!paymentData.amount) {
+                  payUrl +=
+                    (payUrl.includes("?") ? "&" : "?") +
+                    `am=${Number(amount).toFixed(2)}&cu=INR`;
                 }
 
-                window.location.assign(upiUrl.toString());
+                setPaymentStarted(true);
+                window.location.href = payUrl;
               }}
             >
               Pay via UPI
