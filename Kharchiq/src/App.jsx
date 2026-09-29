@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { auth } from "./firebase";
+import { auth, db } from "./firebase";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 import Auth from "./Components/Auth";
 import AddExpense from "./Components/AddExpense";
 import Budget from "./Components/Budget";
@@ -249,8 +250,10 @@ function App() {
     });
     setCurrentPage("home");
   };
+  
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
+  
 
   const [currentPage, setCurrentPage] = useState(() => {
     return localStorage.getItem("kharchiq-current-page") || "home";
@@ -259,18 +262,7 @@ function App() {
     localStorage.setItem("kharchiq-current-page", currentPage);
   }, [currentPage]);
 
-  const [expenses, setExpenses] = useState(() => {
-    const savedExpenses = localStorage.getItem("kharchiq-expenses");
-
-    return savedExpenses ? JSON.parse(savedExpenses) : [];
-  });
-  useEffect(() => {
-    localStorage.setItem("kharchiq-expenses", JSON.stringify(expenses));
-  }, [expenses]);
-
-  useEffect(() => {
-    localStorage.setItem("kharchiq-expenses", JSON.stringify(expenses));
-  }, [expenses]);
+  const [expenses, setExpenses] = useState([]);
 
   const handleAddExpense = (expense) => {
     if (expense.amount > remainingBudget) {
@@ -299,33 +291,98 @@ function App() {
       previousExpenses.filter((expense) => expense.id !== expenseId),
     );
   };
-  const [budgets, setBudgets] = useState(() => {
-    const savedBudgets = localStorage.getItem("kharchiq-budgets");
-
-    return savedBudgets
-      ? JSON.parse(savedBudgets)
-      : {
-          monthly: 0,
-          Food: 0,
-          Shopping: 0,
-          Transport: 0,
-          Health: 0,
-          Education: 0,
-          Other: 0,
-        };
+  const [budgets, setBudgets] = useState({
+    monthly: 0,
+    Food: 0,
+    Shopping: 0,
+    Transport: 0,
+    Health: 0,
+    Education: 0,
+    Other: 0,
   });
   const totalSpent = expenses.reduce(
     (total, expense) => total + expense.amount,
     0,
   );
-  const handleSaveBudget = (newBudgets) => {
+    const handleSaveBudget = (newBudgets) => {
     setBudgets(newBudgets);
   };
+
+    const [dataLoading, setDataLoading] = useState(true);
+  const loadedUserRef = useRef(null);
+
   useEffect(() => {
-    localStorage.setItem("kharchiq-budgets", JSON.stringify(budgets));
-  }, [budgets]);
+    if (!user) {
+      setExpenses([]);
+      setBudgets({
+        monthly: 0,
+        Food: 0,
+        Shopping: 0,
+        Transport: 0,
+        Health: 0,
+        Education: 0,
+        Other: 0,
+      });
+      loadedUserRef.current = null;
+      setDataLoading(false);
+      return;
+    }
+
+    setDataLoading(true);
+    loadedUserRef.current = null;
+
+    const loadData = async () => {
+      try {
+        const snap = await getDoc(doc(db, "users", user.uid));
+
+        if (snap.exists()) {
+          const data = snap.data();
+          setExpenses(data.expenses || []);
+          setBudgets(
+            data.budgets || {
+              monthly: 0,
+              Food: 0,
+              Shopping: 0,
+              Transport: 0,
+              Health: 0,
+              Education: 0,
+              Other: 0,
+            },
+          );
+        } else {
+          setExpenses([]);
+          setBudgets({
+            monthly: 0,
+            Food: 0,
+            Shopping: 0,
+            Transport: 0,
+            Health: 0,
+            Education: 0,
+            Other: 0,
+          });
+        }
+      } catch (error) {
+        console.error("Failed to load data:", error);
+      }
+
+      loadedUserRef.current = user.uid;
+      setDataLoading(false);
+    };
+
+    loadData();
+  }, [user]);
+
+  useEffect(() => {
+    if (!user || dataLoading) return;
+    if (loadedUserRef.current !== user.uid) return;
+
+    setDoc(doc(db, "users", user.uid), { expenses, budgets }).catch((error) =>
+      console.error("Failed to save data:", error),
+    );
+  }, [expenses, budgets, user, dataLoading]);
 
   const monthlyBudget = budgets.monthly;
+  
 
   const remainingBudget = monthlyBudget - totalSpent;
 
@@ -395,6 +452,7 @@ function App() {
   };
   if (authLoading) return null;
   if (!user) return <Auth onNameSaved={setUserName} />;
+  if (dataLoading) return null;
   const categoryChartData = Object.keys(categoryBudgets)
     .map((category) => ({
       category,
