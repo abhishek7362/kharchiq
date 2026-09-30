@@ -1,7 +1,7 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth, db } from "./firebase";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, setDoc, onSnapshot } from "firebase/firestore";
 import Auth from "./Components/Auth";
 import AddExpense from "./Components/AddExpense";
 import Budget from "./Components/Budget";
@@ -236,18 +236,8 @@ function App() {
     return unsubscribe;
   }, []);
 
-  const handleLogout = async () => {
+    const handleLogout = async () => {
     await signOut(auth);
-    setExpenses([]);
-    setBudgets({
-      monthly: 0,
-      Food: 0,
-      Shopping: 0,
-      Transport: 0,
-      Health: 0,
-      Education: 0,
-      Other: 0,
-    });
     setCurrentPage("home");
   };
   
@@ -279,17 +269,29 @@ function App() {
       }
     }
 
-    const expenseWithDate = {
+        const expenseWithDate = {
       ...expense,
       date: new Date().toISOString(),
     };
 
-    setExpenses((previousExpenses) => [expenseWithDate, ...previousExpenses]);
+    const newExpenses = [expenseWithDate, ...expenses];
+    setExpenses(newExpenses);
+
+    setDoc(
+      doc(db, "users", user.uid),
+      { expenses: newExpenses, budgets },
+      { merge: true },
+    ).catch((error) => console.error("Failed to save:", error));
   };
-  const handleDeleteExpense = (expenseId) => {
-    setExpenses((previousExpenses) =>
-      previousExpenses.filter((expense) => expense.id !== expenseId),
-    );
+    const handleDeleteExpense = (expenseId) => {
+    const newExpenses = expenses.filter((expense) => expense.id !== expenseId);
+    setExpenses(newExpenses);
+
+    setDoc(
+      doc(db, "users", user.uid),
+      { expenses: newExpenses, budgets },
+      { merge: true },
+    ).catch((error) => console.error("Failed to save:", error));
   };
   const [budgets, setBudgets] = useState({
     monthly: 0,
@@ -304,12 +306,17 @@ function App() {
     (total, expense) => total + expense.amount,
     0,
   );
-    const handleSaveBudget = (newBudgets) => {
+      const handleSaveBudget = (newBudgets) => {
     setBudgets(newBudgets);
+
+    setDoc(
+      doc(db, "users", user.uid),
+      { expenses, budgets: newBudgets },
+      { merge: true },
+    ).catch((error) => console.error("Failed to save:", error));
   };
 
-    const [dataLoading, setDataLoading] = useState(true);
-  const loadedUserRef = useRef(null);
+      const [dataLoading, setDataLoading] = useState(true);
 
   useEffect(() => {
     if (!user) {
@@ -323,18 +330,15 @@ function App() {
         Education: 0,
         Other: 0,
       });
-      loadedUserRef.current = null;
       setDataLoading(false);
       return;
     }
 
     setDataLoading(true);
-    loadedUserRef.current = null;
 
-    const loadData = async () => {
-      try {
-        const snap = await getDoc(doc(db, "users", user.uid));
-
+    const unsubscribe = onSnapshot(
+      doc(db, "users", user.uid),
+      (snap) => {
         if (snap.exists()) {
           const data = snap.data();
           setExpenses(data.expenses || []);
@@ -361,25 +365,16 @@ function App() {
             Other: 0,
           });
         }
-      } catch (error) {
+        setDataLoading(false);
+      },
+      (error) => {
         console.error("Failed to load data:", error);
-      }
-
-      loadedUserRef.current = user.uid;
-      setDataLoading(false);
-    };
-
-    loadData();
-  }, [user]);
-
-  useEffect(() => {
-    if (!user || dataLoading) return;
-    if (loadedUserRef.current !== user.uid) return;
-
-    setDoc(doc(db, "users", user.uid), { expenses, budgets }).catch((error) =>
-      console.error("Failed to save data:", error),
+        setDataLoading(false);
+      },
     );
-  }, [expenses, budgets, user, dataLoading]);
+
+    return () => unsubscribe();
+  }, [user]);
 
   const monthlyBudget = budgets.monthly;
   
