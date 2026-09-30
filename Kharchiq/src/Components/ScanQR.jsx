@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Html5Qrcode } from "html5-qrcode";
 
 function ScanQR({ onClose, onExpenseAdded }) {
+  const [awaitingReturn, setAwaitingReturn] = useState(false);
   const scannerRef = useRef(null);
   const [paymentData, setPaymentData] = useState(null);
   const [enteredAmount, setEnteredAmount] = useState("");
@@ -156,6 +157,18 @@ function ScanQR({ onClose, onExpenseAdded }) {
       cleanup();
     };
   }, []);
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible" && awaitingReturn) {
+        setPaymentStarted(true);
+        setAwaitingReturn(false);
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () =>
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [awaitingReturn]);
 
   return (
     <div className="scanner-overlay">
@@ -236,7 +249,7 @@ function ScanQR({ onClose, onExpenseAdded }) {
                     (payUrl.includes("?") ? "&" : "?") +
                     `am=${Number(amount).toFixed(2)}&cu=INR`;
                 }
-
+                setAwaitingReturn(true);
                 setPaymentStarted(true);
                 window.location.href = payUrl;
               }}
